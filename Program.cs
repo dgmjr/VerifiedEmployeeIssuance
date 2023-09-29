@@ -1,12 +1,12 @@
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.Identity.Web;
 using Microsoft.Identity.Web.UI;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using MyAccountPage;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,31 +37,21 @@ builder.Services.AddAuthorization(options =>
 var requireUserRoleforAccess = builder.Configuration["AzureAd:AllowedUsersRole"];
 if (!String.IsNullOrEmpty(requireUserRoleforAccess))
 {
-    builder.Services.AddAuthorization(options =>
-    {
-        options.AddPolicy("alloweduser", policy =>
+    builder.Services.AddAuthorizationBuilder().AddPolicy("alloweduser", policy =>
         {
             policy.RequireAuthenticatedUser();
             policy.RequireRole(requireUserRoleforAccess);
         });
-    });
 }
 else
 {
-    builder.Services.AddAuthorization(options =>
-    {
-        options.AddPolicy("alloweduser", policy =>
-        {
-            policy.RequireAuthenticatedUser();
-        });
-    });
+    builder.Services.AddAuthorizationBuilder().AddPolicy("alloweduser", policy =>
+            policy.RequireAuthenticatedUser());
 }
-
-
 
 builder.Services.AddSession(options =>
 {
-    options.IdleTimeout = TimeSpan.FromMinutes(1);//You can set Time   
+    options.IdleTimeout = TimeSpan.FromMinutes(1);//You can set Time
     options.Cookie.IsEssential = true;
     options.Cookie.SameSite = SameSiteMode.None;
     options.Cookie.SecurePolicy = CookieSecurePolicy.Always;

@@ -7,7 +7,6 @@ using Microsoft.Identity.Web;
 
 using static Microsoft.Graph.Constants;
 using System.Net.Http.Headers;
-using System.Net.Http;
 using Microsoft.Identity.Client;
 using System.Security.Cryptography.X509Certificates;
 using static System.Net.WebRequestMethods;
@@ -23,15 +22,13 @@ namespace MyAccountPage.Pages
     [Authorize(Policy = "alloweduser")]
     public class IndexModel : PageModel
     {
-        private readonly ILogger<IndexModel> _logger;
+        private readonly ILogger _logger;
 
         public IndexModel(ILogger<IndexModel> logger)
         {
             _logger = logger;
         }
 
-        public void OnGet()
-        {
-        }
+        public void OnGet() { }
     }
 }

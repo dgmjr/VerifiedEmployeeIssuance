@@ -1,21 +1,32 @@
-﻿using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Graph;
-using Microsoft.Identity.Client;
-using Microsoft.Identity.Web;
-using MyAccountPage.Models;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+﻿using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.Net;
+using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Threading.Tasks;
+using System.IO;
+
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Graph;
+using Microsoft.Identity.Client;
+using Microsoft.Identity.Web;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.IdentityModel.Tokens;
+
 using Azure.Core;
 using Azure.Identity;
+
+using MyAccountPage.Models;
+
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace MyAccountPage
 {
@@ -31,14 +42,15 @@ namespace MyAccountPage
         protected IMemoryCache _cache;
         protected readonly ILogger<IssuerController> _log;
 
-        private string _apiKey;
-        private UserData? _userdata;
+        private readonly string? _apiKey;
 
-        public IssuerController(ILogger<IssuerController> logger,
-                                GraphServiceClient graphServiceClient,
-                                IConfiguration configuration,
-                                IHttpClientFactory httpClientFactory,
-                                IMemoryCache memoryCache)
+        public IssuerController(
+            ILogger<IssuerController> logger,
+            GraphServiceClient graphServiceClient,
+            IConfiguration configuration,
+            IHttpClientFactory httpClientFactory,
+            IMemoryCache memoryCache
+        )
         {
             _log = logger;
             _graphServiceClient = graphServiceClient;
@@ -57,18 +69,20 @@ namespace MyAccountPage
         public async Task<ActionResult> IssuanceRequest()
         {
             //retrieve information from the user to be able to create the payload for the idtokenhint issuance request
-            _userdata = new UserData();
+            var _userdata = new UserData();
             Microsoft.Graph.User user;
             try
             {
                 user = await _graphServiceClient.Me
                     .Request()
-                    .Select("displayName,givenName,jobTitle,preferredLanguage,surname,mail,userPrincipalName")
+                    .Select(
+                        "displayName,givenName,jobTitle,preferredLanguage,surname,mail,userPrincipalName"
+                    )
                     .GetAsync();
 
                 _userdata.displayName = user.DisplayName;
                 _userdata.givenName = user.GivenName;
-                _userdata.jobtitle = user.JobTitle;
+                _userdata.jobTitle = user.JobTitle;
                 _userdata.preferredLanguage = user.PreferredLanguage;
                 _userdata.surname = user.Surname;
                 _userdata.mail = user.Mail;
@@ -81,7 +95,7 @@ namespace MyAccountPage
                         .GetAsync();
                     if (photo != null)
                     {
-                        var photoArray = (photo as MemoryStream).ToArray();
+                        var photoArray = ((photo as MemoryStream)!).ToArray();
                         var encoded = Base64UrlEncoder.Encode(photoArray);
                         _userdata.photo = encoded;
                     }
@@ -90,41 +104,63 @@ namespace MyAccountPage
                 {
                     _log.LogError(ex, "Error getting photo");
                 }
-
             }
             catch (ServiceException ex)
             {
-                return BadRequest(new { error = "400", error_description = "Something went wrong retrieving the user profile: " + ex.Message });
+                return BadRequest(
+                    new
+                    {
+                        error = "400",
+                        error_description = "Something went wrong retrieving the user profile: "
+                            + ex.Message
+                    }
+                );
             }
 
             try
             {
                 //they payload template is loaded from disk and modified in the code below to make it easier to get started
-                //and having all config in a central location appsettings.json. 
+                //and having all config in a central location appsettings.json.
                 //if you want to manually change the payload in the json file make sure you comment out the code below which will modify it automatically
                 //
                 string jsonString = "";
 
-                string payloadpath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetEntryAssembly().Location), ISSUANCEPAYLOAD);
+                string payloadpath = Path.Combine(
+                    Path.GetDirectoryName(typeof(IssuerController).Assembly.Location)!,
+                    ISSUANCEPAYLOAD
+                );
                 _log.LogTrace("IssuanceRequest file: {0}", payloadpath);
                 if (!System.IO.File.Exists(payloadpath))
                 {
                     _log.LogError("File not found: {0}", payloadpath);
-                    return BadRequest(new { error = "400", error_description = ISSUANCEPAYLOAD + " not found" });
+                    return BadRequest(
+                        new { error = "400", error_description = ISSUANCEPAYLOAD + " not found" }
+                    );
                 }
                 jsonString = System.IO.File.ReadAllText(payloadpath);
                 if (string.IsNullOrEmpty(jsonString))
                 {
                     _log.LogError("Error reading file: {0}", payloadpath);
-                    return BadRequest(new { error = "400", error_description = ISSUANCEPAYLOAD + " error reading file" });
+                    return BadRequest(
+                        new
+                        {
+                            error = "400",
+                            error_description = ISSUANCEPAYLOAD + " error reading file"
+                        }
+                    );
                 }
                 JObject payload = JObject.Parse(jsonString);
                 if (payload == null)
                 {
                     _log.LogError("Error parsing jsonstring: {0}", jsonString);
-                    return BadRequest(new { error = "400", error_description = ISSUANCEPAYLOAD + " error parsing payload" });
+                    return BadRequest(
+                        new
+                        {
+                            error = "400",
+                            error_description = ISSUANCEPAYLOAD + " error parsing payload"
+                        }
+                    );
                 }
-
 
                 string state = Guid.NewGuid().ToString();
 
@@ -134,7 +170,7 @@ namespace MyAccountPage
                     payload["callback"]["state"] = state;
                 }
 
-                //modify the callback method to make it easier to debug 
+                //modify the callback method to make it easier to debug
                 //with tools like ngrok since the URI changes all the time
                 //this way you don't need to modify the callback URL in the payload every time
                 //ngrok changes the URI
@@ -148,17 +184,21 @@ namespace MyAccountPage
                     string host = GetRequestHostName();
                     if (!host.Contains("//localhost"))
                     {
-                        payload["callback"]["url"] = String.Format("{0}/api/issuer/issuanceCallback", host);
+                        payload["callback"]["url"] = String.Format(
+                            "{0}/api/issuer/issuanceCallback",
+                            host
+                        );
                     }
                 }
 
                 // set our api-key in the request so we can check it in the callbacks we receive
                 payload["callback"]["headers"]["api-key"] = this._apiKey;
 
-                //get the manifest from the appsettings, this is the URL to the Verified Employee credential created in the azure portal. 
+                //get the manifest from the appsettings, this is the URL to the Verified Employee credential created in the azure portal.
                 //the ? parameter is needed for the myaccount page to work with the Verified Employee credential. This will force the system
                 //to use accept an idtokenhint payload and ignore the accesstoken flow which is the default for employment credentials
-                payload["manifest"] = _configuration["VerifiedEmployeeId:manifest"] + "?manifestType=claimInjection";
+                payload["manifest"] =
+                    _configuration["VerifiedEmployeeId:manifest"] + "?manifestType=claimInjection";
 
                 //get the IssuerDID from the appsettings
                 payload["authority"] = _configuration["VerifiedEmployeeId:authority"];
@@ -167,11 +207,20 @@ namespace MyAccountPage
                 JObject claims = (JObject)payload["claims"];
 
                 //displayname is mandatory
-                if (!String.IsNullOrEmpty(_userdata.displayName)) { payload["claims"]["displayName"] = _userdata.displayName; }
+                if (!String.IsNullOrEmpty(_userdata.displayName))
+                {
+                    payload["claims"]["displayName"] = _userdata.displayName;
+                }
                 else
                 {
                     _log.LogError(String.Format("Mandatory profile data missing: displayName"));
-                    return BadRequest(new { error = "missing profile data", error_description = "displayname is mandatory data for this Verifiable Credential" });
+                    return BadRequest(
+                        new
+                        {
+                            error = "missing profile data",
+                            error_description = "displayname is mandatory data for this Verifiable Credential"
+                        }
+                    );
                 }
 
                 //revocationId is mandatory
@@ -185,18 +234,30 @@ namespace MyAccountPage
                 }
                 else
                 {
-                    _log.LogError(String.Format("Mandatory profile data missing: userprincipalname"));
-                    return BadRequest(new { error = "missing profile data", error_description = "userprincipalname is mandatory data for this Verifiable Credential" });
+                    _log.LogError("Mandatory profile data missing: userprincipalname");
+                    return BadRequest(
+                        new
+                        {
+                            error = "missing profile data",
+                            error_description = "userprincipalname is mandatory data for this Verifiable Credential"
+                        }
+                    );
                 }
 
                 //check if the property of _userdata is empty. only add the values to the payload if the content isnt null or empty
                 //the issuance API doesn't accept empty or null value for claims.
-                if (!String.IsNullOrEmpty(_userdata.givenName)) payload["claims"]["givenName"] = _userdata.givenName;
-                if (!String.IsNullOrEmpty(_userdata.surname)) payload["claims"]["surname"] = _userdata.surname;
-                if (!String.IsNullOrEmpty(_userdata.mail)) payload["claims"]["mail"] = _userdata.mail;
-                if (!String.IsNullOrEmpty(_userdata.jobtitle)) payload["claims"]["jobTitle"] = _userdata.jobtitle;
-                if (!String.IsNullOrEmpty(_userdata.preferredLanguage)) payload["claims"]["preferredLanguage"] = _userdata.preferredLanguage;
-                if (!String.IsNullOrEmpty(_userdata.photo)) payload["claims"]["photo"] = _userdata.photo;
+                if (!String.IsNullOrEmpty(_userdata.givenName))
+                    payload["claims"]!["givenName"] = _userdata.givenName;
+                if (!String.IsNullOrEmpty(_userdata.surname))
+                    payload["claims"]!["surname"] = _userdata.surname;
+                if (!String.IsNullOrEmpty(_userdata.mail))
+                    payload["claims"]!["mail"] = _userdata.mail;
+                if (!String.IsNullOrEmpty(_userdata.jobTitle))
+                    payload["claims"]!["jobTitle"] = _userdata.jobTitle;
+                if (!String.IsNullOrEmpty(_userdata.preferredLanguage))
+                    payload["claims"]!["preferredLanguage"] = _userdata.preferredLanguage;
+                if (!String.IsNullOrEmpty(_userdata.photo))
+                    payload["claims"]["photo"] = _userdata.photo;
 
                 jsonString = JsonConvert.SerializeObject(payload);
 
@@ -206,21 +267,40 @@ namespace MyAccountPage
 
                 try
                 {
-                    //The VC Request API is an authenticated API. We need to clientid and secret (or certificate) to create an access token which 
+                    //The VC Request API is an authenticated API. We need to clientid and secret (or certificate) to create an access token which
                     //needs to be send as bearer to the VC Request API
                     var accessToken = await GetAccessToken();
                     if (accessToken.Item1 == String.Empty)
                     {
-                        _log.LogError(String.Format("failed to acquire accesstoken: "+ accessToken.error + ":" + accessToken.error_description));
-                        return BadRequest(new { error = accessToken.error, error_description = accessToken.error_description });
+                        _log.LogError(
+                            String.Format(
+                                "failed to acquire accesstoken: "
+                                    + accessToken.error
+                                    + ":"
+                                    + accessToken.error_description
+                            )
+                        );
+                        return BadRequest(
+                            new
+                            {
+                                error = accessToken.error,
+                                error_description = accessToken.error_description
+                            }
+                        );
                     }
-
 
                     HttpClient client = new HttpClient();
                     var defaultRequestHeaders = client.DefaultRequestHeaders;
-                    defaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.token);
+                    defaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+                        "Bearer",
+                        accessToken.token
+                    );
 
-                    HttpResponseMessage res = await client.PostAsync(_configuration["VerifiedIDService:Endpoint"] + "verifiableCredentials/createIssuanceRequest", new StringContent(jsonString, Encoding.UTF8, "application/json"));
+                    HttpResponseMessage res = await client.PostAsync(
+                        _configuration["VerifiedIDService:Endpoint"]
+                            + "verifiableCredentials/createIssuanceRequest",
+                        new StringContent(jsonString, Encoding.UTF8, "application/json")
+                    );
                     response = await res.Content.ReadAsStringAsync();
                     client.Dispose();
                     statusCode = res.StatusCode;
@@ -242,18 +322,35 @@ namespace MyAccountPage
                         };
                         _cache.Set(state, JsonConvert.SerializeObject(cacheData));
 
-                        return new ContentResult { ContentType = "application/json", Content = jsonString };
+                        return new ContentResult
+                        {
+                            ContentType = "application/json",
+                            Content = jsonString
+                        };
                     }
                     else
                     {
                         _log.LogError("Unsuccesfully called Request API: " + response);
-                        return BadRequest(new { error = statusCode, error_description = "Something went wrong calling the API: " + response });
+                        return BadRequest(
+                            new
+                            {
+                                error = statusCode,
+                                error_description = "Something went wrong calling the API: "
+                                    + response
+                            }
+                        );
                     }
-
                 }
                 catch (Exception ex)
                 {
-                    return BadRequest(new { error = "400", error_description = "Something went wrong calling the API: " + ex.Message });
+                    return BadRequest(
+                        new
+                        {
+                            error = "400",
+                            error_description = "Something went wrong calling the API: "
+                                + ex.Message
+                        }
+                    );
                 }
             }
             catch (Exception ex)
@@ -272,13 +369,19 @@ namespace MyAccountPage
         {
             try
             {
-                string content = await new System.IO.StreamReader(this.Request.Body).ReadToEndAsync();
+                string content = await new System.IO.StreamReader(
+                    this.Request.Body
+                ).ReadToEndAsync();
                 _log.LogTrace("callback!: " + content);
                 this.Request.Headers.TryGetValue("api-key", out var apiKey);
                 if (!string.Equals(this._apiKey, apiKey))
                 {
                     _log.LogTrace("api-key wrong or missing");
-                    return new ContentResult() { StatusCode = (int)HttpStatusCode.Unauthorized, Content = "api-key wrong or missing" };
+                    return new ContentResult()
+                    {
+                        StatusCode = (int)HttpStatusCode.Unauthorized,
+                        Content = "api-key wrong or missing"
+                    };
                 }
                 JObject issuanceResponse = JObject.Parse(content);
                 var state = issuanceResponse["state"].ToString();
@@ -322,7 +425,6 @@ namespace MyAccountPage
                         //at the moment there isn't a specific error for incorrect entry of a pincode.
                         //So assume this error happens when the users entered the incorrect pincode and ask to try again.
                         message = issuanceResponse["error"]["message"].ToString()
-
                     };
                     _cache.Set(state, JsonConvert.SerializeObject(cacheData));
                 }
@@ -350,7 +452,9 @@ namespace MyAccountPage
                 string state = this.Request.Query["id"];
                 if (string.IsNullOrEmpty(state))
                 {
-                    return BadRequest(new { error = "400", error_description = "Missing argument 'id'" });
+                    return BadRequest(
+                        new { error = "400", error_description = "Missing argument 'id'" }
+                    );
                 }
                 JObject value = null;
                 if (_cache.TryGetValue(state, out string buf))
@@ -358,7 +462,11 @@ namespace MyAccountPage
                     value = JObject.Parse(buf);
 
                     Debug.WriteLine("check if there was a response yet: " + value);
-                    return new ContentResult { ContentType = "application/json", Content = JsonConvert.SerializeObject(value) };
+                    return new ContentResult
+                    {
+                        ContentType = "application/json",
+                        Content = JsonConvert.SerializeObject(value)
+                    };
                 }
 
                 return new OkResult();
@@ -370,7 +478,11 @@ namespace MyAccountPage
         }
 
         //some helper functions
-        protected async Task<(string token, string error, string error_description)> GetAccessToken()
+        protected async Task<(
+            string token,
+            string error,
+            string error_description
+        )> GetAccessToken()
         {
             string _clientid;
             string _clientsecret;
@@ -390,22 +502,22 @@ namespace MyAccountPage
             switch (_configuration["VerifiedIDService:SourceType"])
             {
                 case "Secret":
-                    {
-                        isUsingClientSecret = true;
-                        isUsingDifferentAccountforVCService = true;
-                        break;
-                    }
+                {
+                    isUsingClientSecret = true;
+                    isUsingDifferentAccountforVCService = true;
+                    break;
+                }
                 case "SignedAssertionFromManagedIdentity":
-                    {
-                        isUsingManagedIdentity = true;
-                        isUsingDifferentAccountforVCService = true;
-                        break;
-                    }
+                {
+                    isUsingManagedIdentity = true;
+                    isUsingDifferentAccountforVCService = true;
+                    break;
+                }
                 default:
-                    {
-                        isUsingDifferentAccountforVCService = false;
-                        break;
-                    }
+                {
+                    isUsingDifferentAccountforVCService = false;
+                    break;
+                }
             }
 
             if (isUsingDifferentAccountforVCService)
@@ -413,7 +525,9 @@ namespace MyAccountPage
                 _log.LogInformation("Using different account for VC Service");
                 if (isUsingManagedIdentity)
                 {
-                    _log.LogInformation("Using Managed Identity to get access token for VC Service");
+                    _log.LogInformation(
+                        "Using Managed Identity to get access token for VC Service"
+                    );
                     var at = GetManagedIdentityAccessToken();
                     _log.LogInformation("Managed Identity access token retrieved");
                     return (at.Result);
@@ -430,18 +544,23 @@ namespace MyAccountPage
                 _log.LogInformation("Reusing settings from webapp clientid");
                 _clientid = _configuration["AzureAd:ClientId"];
                 _clientsecret = _configuration["AzureAd:ClientSecret"];
-                if(!string.IsNullOrEmpty(_clientsecret)) isUsingClientSecret = true;
+                if (!string.IsNullOrEmpty(_clientsecret))
+                    isUsingClientSecret = true;
                 _tenantid = _configuration["AzureAd:TenantId"];
                 _certificatename = _configuration["AzureAd:CertificateName"];
             }
-            _authority = String.Format(CultureInfo.InvariantCulture, "https://login.microsoftonline.com/{0}", _tenantid);
-
+            _authority = String.Format(
+                CultureInfo.InvariantCulture,
+                "https://login.microsoftonline.com/{0}",
+                _tenantid
+            );
 
             // Since we are using application permissions this will be a confidential client application
             IConfidentialClientApplication app;
             if (isUsingClientSecret)
             {
-                app = ConfidentialClientApplicationBuilder.Create(_clientid)
+                app = ConfidentialClientApplicationBuilder
+                    .Create(_clientid)
                     .WithClientSecret(_clientsecret)
                     .WithAuthority(new Uri(_authority))
                     .Build();
@@ -449,7 +568,8 @@ namespace MyAccountPage
             else
             {
                 X509Certificate2 certificate = ReadCertificate(_certificatename);
-                app = ConfidentialClientApplicationBuilder.Create(_clientid)
+                app = ConfidentialClientApplicationBuilder
+                    .Create(_clientid)
                     .WithCertificate(certificate)
                     .WithAuthority(new Uri(_authority))
                     .Build();
@@ -460,20 +580,22 @@ namespace MyAccountPage
             app.AddDistributedTokenCache(services =>
             {
                 services.AddDistributedMemoryCache();
-                services.AddLogging(configure => configure.AddConsole())
-                .Configure<LoggerFilterOptions>(options => options.MinLevel = Microsoft.Extensions.Logging.LogLevel.Debug);
+                services
+                    .AddLogging(configure => configure.AddConsole())
+                    .Configure<LoggerFilterOptions>(
+                        options => options.MinLevel = Microsoft.Extensions.Logging.LogLevel.Debug
+                    );
             });
 
-            // With client credentials flows the scopes is ALWAYS of the shape "resource/.default", as the 
+            // With client credentials flows the scopes is ALWAYS of the shape "resource/.default", as the
             // application permissions need to be set statically (in the portal or by PowerShell), and then granted by
-            // a tenant administrator. 
+            // a tenant administrator.
             string[] scopes = new string[] { _configuration["VerifiedIDService:VCServiceScope"] };
 
             AuthenticationResult result = null;
             try
             {
-                result = await app.AcquireTokenForClient(scopes)
-                    .ExecuteAsync();
+                result = await app.AcquireTokenForClient(scopes).ExecuteAsync();
             }
             catch (MsalServiceException ex) when (ex.Message.Contains("AADSTS70011"))
             {
@@ -486,54 +608,75 @@ namespace MyAccountPage
             {
                 // general error getting an access token
                 _log.LogError("Failed!:" + ex.Message);
-                return (String.Empty, "500", "Something went wrong getting an access token for the client API:" + ex.Message);
+                return (
+                    String.Empty,
+                    "500",
+                    "Something went wrong getting an access token for the client API:" + ex.Message
+                );
             }
 
             return (result.AccessToken, String.Empty, String.Empty);
         }
 
-        private async Task<(string token, string error, string error_description)> GetManagedIdentityAccessToken()
+        private async Task<(
+            string token,
+            string error,
+            string error_description
+        )> GetManagedIdentityAccessToken()
         {
             _log.LogInformation("trying to get new accesstoken through MSI");
             var credential = new ChainedTokenCredential(
                 new ManagedIdentityCredential(),
-                new EnvironmentCredential());
+                new EnvironmentCredential()
+            );
             try
             {
                 var token = credential.GetToken(
-                new Azure.Core.TokenRequestContext(
-                    new[] { "3db474b9-6a0c-4840-96ac-1fceb342124f/.default" }));
+                    new Azure.Core.TokenRequestContext(
+                        new[] { "3db474b9-6a0c-4840-96ac-1fceb342124f/.default" }
+                    )
+                );
                 var accessToken = token.Token;
                 _log.LogInformation("Getting Access token from MSI succes");
                 return (accessToken, String.Empty, String.Empty);
             }
             catch (Exception ex)
             {
-                _log.LogError("Failed!:"+ ex.Message);
-                return (String.Empty, "500", "Something went wrong getting an access token for the client API:" + ex.Message);
+                _log.LogError("Failed!:" + ex.Message);
+                return (
+                    String.Empty,
+                    "500",
+                    "Something went wrong getting an access token for the client API:" + ex.Message
+                );
             }
         }
+
         protected string GetRequestHostName()
         {
-            string scheme = "https";// : this.Request.Scheme;
+            string scheme = "https"; // : this.Request.Scheme;
             string originalHost = this.Request.Headers["x-original-host"];
             string hostname = "";
             if (!string.IsNullOrEmpty(originalHost))
                 hostname = string.Format("{0}://{1}", scheme, originalHost);
-            else hostname = string.Format("{0}://{1}", scheme, this.Request.Host);
+            else
+                hostname = string.Format("{0}://{1}", scheme, this.Request.Host);
             return hostname;
         }
+
         public X509Certificate2 ReadCertificate(string certificateName)
         {
             if (string.IsNullOrWhiteSpace(certificateName))
             {
-                throw new ArgumentException("certificateName should not be empty. Please set the CertificateName setting in the appsettings.json", "certificateName");
+                throw new ArgumentException(
+                    "certificateName should not be empty. Please set the CertificateName setting in the appsettings.json",
+                    nameof(certificateName)
+                );
             }
-            CertificateDescription certificateDescription = CertificateDescription.FromStoreWithDistinguishedName(certificateName);
-            DefaultCertificateLoader defaultCertificateLoader = new DefaultCertificateLoader();
+            CertificateDescription certificateDescription =
+                CertificateDescription.FromStoreWithDistinguishedName(certificateName);
+            var defaultCertificateLoader = new DefaultCertificateLoader();
             defaultCertificateLoader.LoadIfNeeded(certificateDescription);
-            return certificateDescription.Certificate;
+            return certificateDescription.Certificate!;
         }
-
     }
 }

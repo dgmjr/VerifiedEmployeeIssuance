@@ -1,9 +1,9 @@
-﻿$TenantID="<YOUR TENANTID>"
-$DisplayNameOfMSI="<NAME OF THE MANAGED IDENTITY FROM YOUR AZURE WEBAPP>"
+﻿$TenantID="174417d5-e4b0-4ed3-a0ae-ba500ff099b6"
+$DisplayNameOfMSI="RestoringPride.org Verifiable Credentials Service"
 
-$ApiAppId = "3db474b9-6a0c-4840-96ac-1fceb342124f"
+$ApiAppId = "a0d2437c-a7db-4c11-9904-0e80616b4b54"
 $PermissionName = "VerifiableCredential.Create.All"
- 
+
 
 # Install the module
 Install-Module AzureAD

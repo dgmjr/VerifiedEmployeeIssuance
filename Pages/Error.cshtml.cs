@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
+using System.IO;
 
 namespace MyAccountPage.Pages
 {
@@ -11,10 +13,10 @@ namespace MyAccountPage.Pages
     {
         public string? RequestId { get; set; }
         public string? ExceptionMessage { get; set; }
-        
+
         public bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
 
-        private readonly ILogger<ErrorModel> _logger;
+        private readonly ILogger _logger;
 
         public ErrorModel(ILogger<ErrorModel> logger)
         {
@@ -26,7 +28,7 @@ namespace MyAccountPage.Pages
             RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
 
             var exceptionHandlerPathFeature =
-            HttpContext.Features.Get<IExceptionHandlerPathFeature>();
+                HttpContext.Features.Get<IExceptionHandlerPathFeature>();
 
             if (exceptionHandlerPathFeature?.Error is FileNotFoundException)
             {

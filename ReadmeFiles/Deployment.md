@@ -1,4 +1,5 @@
 # Setup and deploy the webapp to Azure
+
 The custom webapp needs to be deployed in your environment. In this document, we are sharing the best practices for Azure deployments. If you need to deploy it to another environment that works as well. You would need to use app secrets or certs and configure the deployment with the best practices of that environment.
 
 The web application can be configured in several ways. This guidance describes how to deploy it to azure web apps and uses a Managed Identity to create access tokens to communicate to the MS Entra Verified ID Service.
@@ -29,7 +30,7 @@ Before completing these steps, we assume the VC Service is set up, and the Verif
 ## 2 Create App Services plan
 [Create App Service Plan - Microsoft Azure](https://ms.portal.azure.com/#create/Microsoft.AppServicePlanCreate)
 ![create app service plan](Images/CreateAppServicePlan.png)
-Select the appropriate pricing plan for your expected capacity. 
+Select the appropriate pricing plan for your expected capacity.
 
 ## 3 Create Web application
 [Create Web App - Microsoft Azure](https://ms.portal.azure.com/#create/Microsoft.WebSite)
@@ -122,7 +123,7 @@ $DisplayNameOfMSI="<NAME OF THE MANAGED IDENTITY FROM YOUR AZURE WEBAPP>"
 #
 $ApiAppId = "3db474b9-6a0c-4840-96ac-1fceb342124f"
 $PermissionName = "VerifiableCredential.Create.IssueRequest"
- 
+
 
 # Install the module
 Install-Module AzureAD
@@ -157,7 +158,7 @@ In the permissions screen you should see the managed identity has permissions to
 This step will configure the web app with all the settings we noted down during the steps before.
 
 There are a few ways to configure an application. You can deploy a combination of appsettings.json and through configuration in the azure portal overwriting any of the config from the appsettings.json file.
-It's probably easiest to leave the appsettings.json file and use the provided configuration. 
+It's probably easiest to leave the appsettings.json file and use the provided configuration.
 
 For clarity we will discuss the settings through the appconfiguration.json file, but recommend copying the settings for the web app configuration through the portal.
 
@@ -248,7 +249,7 @@ The part for the Verified ID service looks like this:
     "Endpoint": "https://verifiedid.did.msidentity.com/v1.0/",
     "VCServiceScope": "3db474b9-6a0c-4840-96ac-1fceb342124f/.default"
   },
-```  
+```
 And the last bit is your configuration for your Verified Employee credential and Authority
 ```
   "VerifiedEmployeeId": {
