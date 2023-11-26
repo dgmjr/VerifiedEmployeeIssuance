@@ -632,9 +632,7 @@ namespace MyAccountPage
             try
             {
                 var token = credential.GetToken(
-                    new Azure.Core.TokenRequestContext(
-                        new[] { "3db474b9-6a0c-4840-96ac-1fceb342124f/.default" }
-                    )
+                    new(new[] { "3db474b9-6a0c-4840-96ac-1fceb342124f/.default" })
                 );
                 var accessToken = token.Token;
                 _log.LogInformation("Getting Access token from MSI succes");

@@ -25,7 +25,13 @@ namespace MyAccountPage.Pages
     public class IssueModel : PageModel
     {
         private readonly GraphServiceClient _graphServiceClient;
-        private readonly ILogger<IndexModel> _logger;
+        private readonly ILogger _logger;
+
+        public IssueModel(GraphServiceClient graphServiceClient, ILogger<IssueModel> logger)
+        {
+            _graphServiceClient = graphServiceClient;
+            _logger = logger;
+        }
 
         public async Task<IActionResult> OnGet()
         {
