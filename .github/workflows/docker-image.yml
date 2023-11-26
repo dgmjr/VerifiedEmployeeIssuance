@@ -34,7 +34,7 @@ jobs:
         # Path to build context
         # build-context: # optional, default is .
         # Pull the image before buiding it
-        pull-image: true # optional, default is false
+        # pull-image: true # optional, default is false
         # Multiple tags that will be attached to a built image
         additional-image-tags: latest # optional, default is 
         # Target image platform/platforms
