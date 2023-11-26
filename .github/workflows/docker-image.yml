@@ -14,31 +14,24 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-    # - name: Build the Docker image
-    #   run: docker build . --file Dockerfile --tag verifiedemployeeissuance:$(date +%s)
-    - name: Build and publish Docker Images to GitHub Container registry
-    # You may pin to the exact commit or the version.
-    # uses: VaultVulp/gp-docker-action@3c0a6ca5c66e31614579048b57259114fb69ac28
-      uses: VaultVulp/gp-docker-action@1.6.0
+    - name: Build the Docker image
+      run: docker build . --file Dockerfile --tag verifiedemployeeissuance:$(date +%s)
+
+    - name: "Github Container Registry: Build and push Docker image"
+      # You may pin to the exact commit or the version.
+      # uses: pmorelli92/github-container-registry-build-push@fc48636de278363701ac07b6317820e4dfb514d6
+      uses: pmorelli92/github-container-registry-build-push@2.1.0
       with:
-        # GitHub token to push Docker image to GitHub Packages
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        # Token such as GITHUB_TOKEN that has `write:packages` scope to authenticate against GCHR.
+        github-push-secret: ${{ secrets.GITHUB_TOKEN }}
         # Docker Image name
-        image-name: verifiedemployeeissuance
+        docker-image-name: verifiedemployeeissuance
         # Docker Image tag
-        image-tag: $(date +%s) # optional, default is latest
-        # Extract git-tag from repository
-        # extract-git-tag: # optional, default is false
-        # Dockerfile name
-        # dockerfile: # optional, default is Dockerfile
-        # Path to build context
+        docker-image-tag: latest # optional, default is latest
+        # Dockerfile path and name
+        # dockerfile-path: # optional, default is Dockerfile
+        # Path to the build context
         # build-context: # optional, default is .
-        # Pull the image before buiding it
-        # pull-image: true # optional, default is false
-        # Multiple tags that will be attached to a built image
-        additional-image-tags: latest # optional, default is 
-        # Target image platform/platforms
-        image-platform: amd64 # optional, default is 
-        # Any additional docker build arguments as a string
-        # custom-args: # optional, default is 
-              
+        # If 'true', skip pushing the image
+        # build-only: # optional, default is false
+          
